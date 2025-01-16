@@ -152,7 +152,7 @@ void train_step(Model *model, unsigned char **images, int *labels, int batch_siz
             for (int i = 0; i < input_size; i++)
             {
                 logits[j] += model->weights[i * NUM_CLASSES + j] * image[i];
-            }
+            } 
         }
 
         // Compute softmax probabilities

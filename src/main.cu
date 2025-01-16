@@ -63,5 +63,17 @@ int main()
     // Copy biases from device to host
     cudaMemcpy(hostModel.biases, model.biases, NUM_CLASSES * sizeof(float), cudaMemcpyDeviceToHost);
 
+      // Mini-batch training loop
+    for (int epoch = 0; epoch < 1; epoch++)
+    {
+        printf("Epoch %d\n", epoch + 1);
+        for (int i = 0; i < image_count; i += MINI_BATCH_SIZE)
+        {
+            // Perform the training step
+            // train_step(&model, mini_batch_images, mini_batch_labels, batch_size, input_size, learning_rate);
+            
+        }
+    }
+
     print_model(hostModel, input_size, NUM_CLASSES);
 }
