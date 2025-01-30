@@ -6,30 +6,47 @@
 #define NUM_CLASSES 10
 #define INPUT_SIZE 784 // MNIST image size: 28x28
 #define BLOCK_SIZE 1024
-#define NUM_IMAGES 64
+#define SHARED_MEMORY_SIZE 1024
+#define NUM_IMAGES 128
 
-__global__ void compute_logits(float *weights, float *biases, float *images, float *logits, int input_size, int num_classes, int num_images)
+__global__ void compute_logits(float *weights, float *biases, float *images, float *logits,
+                               int input_size, int num_classes, int num_images)
 {
     int j = blockIdx.x;       // Class index (row of weights)
     int img_idx = blockIdx.y; // Image index (row of images)
     int i = threadIdx.x;      // Input index
 
-    extern __shared__ float shared_partial[];
+    // Define shared memory
+    extern __shared__ float shared_mem[];
+    float *swieghts = shared_mem;                                         // Start at 0
+    float *simages = &shared_mem[(input_size + 31) / 32 * 32];            // Align to next multiple of 32
+    float *shared_partial = &shared_mem[(2 * input_size + 31) / 32 * 32]; // Align to next multiple of 32
 
-    // Each threadblock handles one row of weights (one class) and one image
+    // Load weights and images into shared memory
     if (i < input_size)
     {
-        shared_partial[i] = weights[j * input_size + i] * images[img_idx * input_size + i]; // Load and multiply weights with image into shared memory
+        swieghts[i] = __ldg(&weights[j * input_size + i]);
+        simages[i] = __ldg(&images[img_idx * input_size + i]);
     }
-    else
+
+    // Initialize padding range if required
+    if (i >= input_size && i < (2 * input_size))
     {
         shared_partial[i] = 0.0f;
     }
 
     __syncthreads();
 
+    // Perform element-wise multiplication
+    if (i < input_size)
+    {
+        shared_partial[i] = swieghts[i] * simages[i];
+    }
+
+    __syncthreads();
+
     // Reduction within the block
-    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1)
+    for (int stride = SHARED_MEMORY_SIZE / 2; stride > 0; stride >>= 1)
     {
         if (i < stride)
         {
@@ -41,8 +58,9 @@ __global__ void compute_logits(float *weights, float *biases, float *images, flo
     // Write the result to logits (add bias)
     if (i == 0)
     {
-        logits[img_idx * num_classes + j] = shared_partial[0] + biases[j];
-        // printf("blockidx.x: %d blockidx.y: %d  shared_partial: %f\n", blockIdx.x, blockIdx.y, shared_partial[0]);
+        logits[img_idx * num_classes + j] = shared_partial[0] + __ldg(&biases[j]);
+        // Uncomment for debugging
+        // printf("blockIdx.x: %d blockIdx.y: %d shared_partial: %f\n", blockIdx.x, blockIdx.y, shared_partial[0]);
     }
 }
 
@@ -160,7 +178,7 @@ int main()
     // Launch kernel
     dim3 blockDim(BLOCK_SIZE);
     dim3 gridDim(NUM_CLASSES, NUM_IMAGES);
-    compute_logits<<<gridDim, blockDim, BLOCK_SIZE * sizeof(float)>>>(d_weights, d_biases, d_images, d_logits, INPUT_SIZE, NUM_CLASSES, NUM_IMAGES);
+    compute_logits<<<gridDim, blockDim, (3 * SHARED_MEMORY_SIZE + 3) * sizeof(float)>>>(d_weights, d_biases, d_images, d_logits, INPUT_SIZE, NUM_CLASSES, NUM_IMAGES);
 
     cudaDeviceSynchronize();
 
