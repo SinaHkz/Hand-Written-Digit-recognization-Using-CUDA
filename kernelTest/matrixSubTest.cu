@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 
-__global__ void matrixSubtractKernel(float *A, float *B, float *C, float *biases, float lr, int m, int n)//bugggggggggggggggggggggggggggggggggggggggggggggg
+__global__ void matrixSubtractKernel(float *A, float *B, float *C, float lr, int m, int n) // bugggggggggggggggggggggggggggggggggggggggggggggg
 {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -10,7 +10,7 @@ __global__ void matrixSubtractKernel(float *A, float *B, float *C, float *biases
     {
         int index = row * n + col;
         C[index] = A[index] - B[index];
-        biases[index] -= lr * C[index];
+        // biases[index] -= lr * C[index];
     }
 }
 
@@ -66,6 +66,18 @@ void matrix_operation(float *A, float *B, float *C, float *weights, float lr, in
     }
 }
 
+void subtract_matrices(float *A, float *B, float *result, int rows, int cols)
+{
+    // Perform the matrix subtraction using pointers
+    for (int i = 0; i < rows; i++)
+    {
+        for (int j = 0; j < cols; j++)
+        {
+            *(result + i * cols + j) = *(A + i * cols + j) - *(B + i * cols + j); // Subtract corresponding elements
+        }
+    }
+}
+
 int main()
 {
     // Define matrix dimensions
@@ -108,12 +120,14 @@ int main()
     cudaMemcpy(d_C, C, m * n * sizeof(float), cudaMemcpyHostToDevice);
 
     // Set block and grid sizes
-    dim3 threadsPerBlock(32, 32);
+    dim3 threadsPerBlock(8, 4);
     dim3 blocksPerGrid((n + threadsPerBlock.x - 1) / threadsPerBlock.x,  // Handle width of matrix
                        (m + threadsPerBlock.y - 1) / threadsPerBlock.y); // Handle height of matrix
 
     // Launch the kernel
-    matrixOperationKernel<<<blocksPerGrid, threadsPerBlock, n * m * sizeof(float)>>>(d_A, d_B, d_C, 0.1, m, n);
+    // matrixOperationKernel<<<blocksPerGrid, threadsPerBlock, n * m * sizeof(float)>>>(d_A, d_B, d_C, 0.1, m, n);
+
+    matrixSubtractKernel<<<blocksPerGrid, threadsPerBlock, n * m * sizeof(float)>>>(d_A, d_B, d_C, 0.1, m, n);
 
     // Wait for the kernel to finish
     cudaDeviceSynchronize();
@@ -129,7 +143,8 @@ int main()
     // Copy the result back to the host
     cudaMemcpy(C, d_C, m * n * sizeof(float), cudaMemcpyDeviceToHost);
 
-    matrix_operation(A, B, C2, C3, 0.1, m, n);
+    // matrix_operation(A, B, C2, C3, 0.1, m, n);
+    subtract_matrices(A, B, C2, m, n);
 
     // Print a part of the result matrix C for verification (optional)
     printf("Matrix C (result):\n");
@@ -138,7 +153,7 @@ int main()
         for (int j = 0; j < n; j++)
         {
             // printf("%f ", C3[i * n + j]);
-            if (C[i * n + j] != C3[i * n + j])
+            if (C[i * n + j] != C2[i * n + j])
             {
                 printf("%d %d\n", i, j);
                 exit(1);
