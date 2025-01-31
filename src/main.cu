@@ -246,7 +246,7 @@ int main()
     compute_softmax<<<blocksPerGrid_softmax, threadsPerBlock_softmax, 3 * SMAX_BLOCK_SIZE * sizeof(float)>>>(d_logits, d_prob, NUM_CLASSES * NUM_IMAGES);
     compute_full_softmax(h_logits, h_logits, NUM_IMAGES, NUM_CLASSES);
 
-    dim3 threadsPerBlock_subtract(32, 16);
+    dim3 threadsPerBlock_subtract(8, 4);
     dim3 blocksPerGrid_subtract((NUM_CLASSES + threadsPerBlock_subtract.x - 1) / threadsPerBlock_subtract.x, (NUM_IMAGES + threadsPerBlock_subtract.y - 1) / threadsPerBlock_subtract.y);
     matrixSubtractKernel<<<blocksPerGrid_subtract, threadsPerBlock_subtract>>>(d_prob, d_label, d_delta, NUM_IMAGES, NUM_CLASSES);
     subtract_matrices(h_logits, h_onehot_labels, h_delta, NUM_IMAGES, NUM_CLASSES);

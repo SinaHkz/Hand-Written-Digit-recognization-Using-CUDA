@@ -197,7 +197,7 @@ __global__ void matrixSubtractKernel(float *A, bool *B, float *C, int m, int n)
     {
         int index = row * n + col;
         C[index] = A[index] - (float)B[index];
-        printf("A: %f B: %d C: %f\n", A[index], B[index], C[index]);
+        // printf("A: %f B: %d C: %f\n", A[index], B[index], C[index]);
     }
 }
 

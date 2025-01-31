@@ -6,7 +6,7 @@
 #define NUM_CLASSES 10
 #define IMG_SIZE 784 // MNIST image size: 28x28
 #define COMPUTE_Z_BLOCK_SIZE 800
-#define SMAX_BLOCK_SIZE 40
+#define SMAX_BLOCK_SIZE 20
 #define SHARED_MEMORY_SIZE 1024
 #define NUM_IMAGES 128
 #define SUM_ROW_SIZE 128
