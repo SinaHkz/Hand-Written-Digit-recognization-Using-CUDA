@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <cuda.h>
 
-#define NUM_CLASSES 128  // Number of rows
-#define NUM_IMG 1024     // Number of columns
+#define NUM_CLASSES 10  // Number of rows
+#define NUM_IMG 128     // Number of columns
 
 // Sequential reduction sum (CPU version)
 void row_reduction_sum_sequential(float *matrix, float *result, int num_classes, int num_img) {
@@ -12,7 +12,7 @@ void row_reduction_sum_sequential(float *matrix, float *result, int num_classes,
         for (int j = 0; j < num_img; j++) {
             sum += matrix[i * num_img + j];  // Sum elements of row i
         }
-        result[i] = sum;  // Store result for row i
+        result[i] = sum / num_img;  // Store result for row i
     }
 }
 
@@ -46,7 +46,7 @@ __global__ void row_reduction_sum(float *matrix, float *result, int num_classes,
 
     // Write final result
     if (tid == 0) {
-        result[row] = shared_data[0];
+        result[row] = shared_data[0] / num_img;
     }
 }
 

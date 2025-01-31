@@ -208,77 +208,41 @@ __global__ void transpose(float *in, float *out, int ny, int nx)
 
     if (ix < nx && iy < ny)
     {
-        out[ix * ny + iy] = in[iy * nx + ix]; // Corrected indexing for NxM matrices
+        out[ix * ny + iy] = in[iy * nx + ix];
+        // printf("ix: %d, iy: %d\n", ix, iy);
     }
 }
 
-__global__ void update_biases(float *matrix, float *biases, float lr, int num_classes, int img_size, int num_img)
-{
-    extern __shared__ float shared_data[]; // Ensure IMG_SIZE matches maximum expected row size
+__global__ void update_biases(float *matrix, float *result, float lr, int num_classes, int num_img) {
+    extern __shared__ float shared_data[];  // Ensure NUM_IMG matches maximum expected row size
 
     int row = blockIdx.x;
     int tid = threadIdx.x;
 
     // Initialize shared memory with matrix row data
-    shared_data[tid] = (tid < img_size) ? matrix[row * img_size + tid] : 0.0f;
+    shared_data[tid] = (tid < num_img) ? matrix[row * num_img + tid] : 0.0f;
     __syncthreads();
 
     // Unrolled parallel reduction with power-of-two assumption
-    if (IMG_SIZE >= 1024)
-    {
-        if (tid < 512)
-        {
-            shared_data[tid] += shared_data[tid + 512];
-        }
-        __syncthreads();
-    }
-    if (IMG_SIZE >= 512)
-    {
-        if (tid < 256)
-        {
-            shared_data[tid] += shared_data[tid + 256];
-        }
-        __syncthreads();
-    }
-    if (IMG_SIZE >= 256)
-    {
-        if (tid < 128)
-        {
-            shared_data[tid] += shared_data[tid + 128];
-        }
-        __syncthreads();
-    }
-    if (IMG_SIZE >= 128)
-    {
-        if (tid < 64)
-        {
-            shared_data[tid] += shared_data[tid + 64];
-        }
-        __syncthreads();
-    }
+    if (num_img >= 1024) { if (tid < 512) { shared_data[tid] += shared_data[tid + 512]; } __syncthreads(); }
+    if (num_img >= 512) { if (tid < 256) { shared_data[tid] += shared_data[tid + 256]; } __syncthreads(); }
+    if (num_img >= 256) { if (tid < 128) { shared_data[tid] += shared_data[tid + 128]; } __syncthreads(); }
+    if (num_img >= 128) { if (tid < 64) { shared_data[tid] += shared_data[tid + 64]; } __syncthreads(); }
 
     // Warp-level unrolling (no synchronization needed)
-    if (tid < 32)
-    {
+    if (tid < 32) {
         volatile float *vsmem = shared_data;
-        if (IMG_SIZE >= 64)
-            vsmem[tid] += vsmem[tid + 32];
-        if (IMG_SIZE >= 32)
-            vsmem[tid] += vsmem[tid + 16];
-        if (IMG_SIZE >= 16)
-            vsmem[tid] += vsmem[tid + 8];
-        if (IMG_SIZE >= 8)
-            vsmem[tid] += vsmem[tid + 4];
-        if (IMG_SIZE >= 4)
-            vsmem[tid] += vsmem[tid + 2];
-        if (IMG_SIZE >= 2)
-            vsmem[tid] += vsmem[tid + 1];
+        if (num_img >= 64) vsmem[tid] += vsmem[tid + 32];
+        if (num_img >= 32) vsmem[tid] += vsmem[tid + 16];
+        if (num_img >= 16) vsmem[tid] += vsmem[tid + 8];
+        if (num_img >= 8) vsmem[tid] += vsmem[tid + 4];
+        if (num_img >= 4) vsmem[tid] += vsmem[tid + 2];
+        if (num_img >= 2) vsmem[tid] += vsmem[tid + 1];
     }
 
-    // Write final biases
-    if (tid == 0)
-    {
-        biases[row] -= shared_data[0] / num_img * lr;
+    // Write final result
+    if (tid == 0) {
+        result[row] = shared_data[0] / num_img * lr;
     }
 }
 

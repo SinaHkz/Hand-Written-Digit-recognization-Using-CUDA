@@ -67,8 +67,8 @@ Model init_model(Model h_model,int input_size, int num_classes)
     Model model;
 
     // Allocate memory on the GPU
-    cudaMalloc((void **)&model.weights, input_size * num_classes * sizeof(float));
-    cudaMalloc((void **)&model.biases, num_classes * sizeof(float));
+    cudaMallocManaged((void **)&model.weights, input_size * num_classes * sizeof(float));
+    cudaMallocManaged((void **)&model.biases, num_classes * sizeof(float));
 
     cudaMemcpy(model.weights, h_model.weights, input_size * num_classes * sizeof(float), cudaMemcpyHostToDevice);
 

@@ -43,7 +43,7 @@ void print_matrix(float *matrix, int num_rows, int num_cols)
         printf("[");
         for (int j = 0; j < num_cols; j++)
         {
-            printf("%.6f", matrix[i * num_cols + j]); // Access element in row-major order
+            printf("%.2f", matrix[i * num_cols + j]); // Access element in row-major order
             if (j < num_cols - 1)
                 printf(", "); // Add comma between elements
         }
@@ -159,7 +159,40 @@ void transpose_sequential(float *in, float *out, int ny, int nx)
     {
         for (int j = 0; j < nx; j++)
         {
-            out[j * ny + i] = in[i * nx + j]; // Correct transpose for non-square matrices
+            out[j * ny + i] = in[i * nx + j];
+        }
+    }
+}
+
+void update_biases_sequential(float *matrix, float *result, int num_classes, int num_img, float lr)
+{
+    for (int i = 0; i < num_classes; i++)
+    {
+        float sum = 0.0f;
+        for (int j = 0; j < num_img; j++)
+        {
+            sum += matrix[i * num_img + j]; // Sum elements of row i
+        }
+        result[i] = sum / num_img * lr; // Store result for row i
+    }
+}
+
+void update_weights_sequential(float *images, float *deltas, float *weights, float lr, int num_img, int img_size, int num_classes)
+{
+    for (int xRow = 0; xRow < img_size; ++xRow)
+    {
+        for (int wRow = 0; wRow < num_classes; ++wRow)
+        {
+            float sum = 0.0f;
+
+            // Calculate the summation part
+            for (int tid = 0; tid < num_img; ++tid)
+            {
+                sum += images[xRow * num_img + tid] * deltas[wRow * num_img + tid];
+            }
+
+            // Update the weight
+            weights[wRow * img_size + xRow] -= sum / num_img * lr;
         }
     }
 }
@@ -204,21 +237,25 @@ int main()
         int label = labels[i];
         h_onehot_labels[i * NUM_CLASSES + label] = true;
     }
-    float *ph_logits, *ph_delta;
-    float *h_images, *h_logits, *th_images, *th_deltas, *h_prob, *h_delta;
 
+    float learning_rate = 0.1;
+
+    float *h_images, *h_logits, *th_images, *th_deltas, *h_delta;
     h_logits = (float *)malloc(NUM_IMAGES * IMG_SIZE * sizeof(float));
-    ph_logits = (float *)malloc(NUM_IMAGES * IMG_SIZE * sizeof(float));
-    h_prob = (float *)malloc(NUM_IMAGES * NUM_CLASSES * sizeof(float));
+    // h_prob = (float *)malloc(NUM_IMAGES * NUM_CLASSES * sizeof(float));
     h_delta = (float *)malloc(NUM_IMAGES * NUM_CLASSES * sizeof(float));
-    ph_delta = (float *)malloc(NUM_IMAGES * NUM_CLASSES * sizeof(float));
 
-    th_images = (float *)malloc(NUM_IMAGES * NUM_CLASSES * sizeof(float));
+    float *ph_logits, *ph_delta;
+    ph_delta = (float *)malloc(NUM_IMAGES * NUM_CLASSES * sizeof(float));
+    ph_logits = (float *)malloc(NUM_IMAGES * IMG_SIZE * sizeof(float));
+
+    th_images = (float *)malloc(NUM_IMAGES * IMG_SIZE * sizeof(float));
     th_deltas = (float *)malloc(NUM_IMAGES * NUM_CLASSES * sizeof(float));
 
     h_images = images;
 
     memset(h_logits, 0, NUM_IMAGES * IMG_SIZE * sizeof(float));
+    // memset(th_images, 0, NUM_IMAGES * IMG_SIZE * sizeof(float));
 
     // Allocate memory on GPU
     float *d_images, *d_logits, *dt_images, *dt_deltas, *d_delta;
@@ -241,38 +278,53 @@ int main()
     compute_logits_cpu(h_model.weights, h_model.biases, h_images, h_logits, IMG_SIZE, NUM_CLASSES, NUM_IMAGES);
 
     float *d_prob = d_logits;
+    float *h_prob = h_logits;
     dim3 threadsPerBlock_softmax(NUM_CLASSES, SMAX_BLOCK_SIZE / NUM_CLASSES);
     dim3 blocksPerGrid_softmax(NUM_IMAGES * NUM_CLASSES / SMAX_BLOCK_SIZE);
     compute_softmax<<<blocksPerGrid_softmax, threadsPerBlock_softmax, 3 * SMAX_BLOCK_SIZE * sizeof(float)>>>(d_logits, d_prob, NUM_CLASSES * NUM_IMAGES);
-    compute_full_softmax(h_logits, h_logits, NUM_IMAGES, NUM_CLASSES);
+    compute_full_softmax(h_logits, h_prob, NUM_IMAGES, NUM_CLASSES);
 
     dim3 threadsPerBlock_subtract(8, 4);
     dim3 blocksPerGrid_subtract((NUM_CLASSES + threadsPerBlock_subtract.x - 1) / threadsPerBlock_subtract.x, (NUM_IMAGES + threadsPerBlock_subtract.y - 1) / threadsPerBlock_subtract.y);
     matrixSubtractKernel<<<blocksPerGrid_subtract, threadsPerBlock_subtract>>>(d_prob, d_label, d_delta, NUM_IMAGES, NUM_CLASSES);
     subtract_matrices(h_logits, h_onehot_labels, h_delta, NUM_IMAGES, NUM_CLASSES);
 
-    // dim3 threadsPerBlock_transpose(8, 16);
-    // dim3 blocksPerGrid_transpose((NUM_IMAGES + 8 - 1) / 8, (IMG_SIZE + 16 - 1) / 16);
-    // transpose<<<blocksPerGrid_transpose, threadsPerBlock_transpose>>>(d_images, dt_images, NUM_IMAGES, NUM_CLASSES);
+    dim3 threadsPerBlock_transpose(16, 8);
+    dim3 blocksPerGrid_transpose(
+        (IMG_SIZE + threadsPerBlock_transpose.x - 1) / threadsPerBlock_transpose.x,
+        (NUM_IMAGES + threadsPerBlock_transpose.y - 1) / threadsPerBlock_transpose.y);
+    transpose<<<blocksPerGrid_transpose, threadsPerBlock_transpose>>>(d_images, dt_images, NUM_IMAGES, IMG_SIZE);
+    transpose_sequential(h_images, th_images, NUM_IMAGES, IMG_SIZE);
 
-    // dim3 threadsPerBlock_transpose_prob(8, 16);
-    // dim3 blocksPerGrid_transpose_prob((NUM_IMAGES + 8 - 1) / 8, (NUM_CLASSES + 16 - 1) / 16);
-    // transpose<<<blocksPerGrid_transpose_prob, threadsPerBlock_transpose_prob>>>(d_prob, dt_deltas, NUM_IMAGES, NUM_CLASSES);
+    dim3 threadsPerBlock_transpose_prob(16, 8);
+    dim3 blocksPerGrid_transpose_prob((NUM_CLASSES + threadsPerBlock_transpose_prob.x - 1) / threadsPerBlock_transpose_prob.x, (NUM_IMAGES + threadsPerBlock_transpose_prob.y - 1) / threadsPerBlock_transpose_prob.y);
+    transpose<<<blocksPerGrid_transpose_prob, threadsPerBlock_transpose_prob>>>(d_delta, dt_deltas, NUM_IMAGES, NUM_CLASSES);
+    transpose_sequential(h_delta, th_deltas, NUM_IMAGES, NUM_CLASSES);
 
-    // transpose(h_images, th_images);
-    // transpose(pro);
+    dim3 threadsPerBlock_update_biases(NUM_IMAGES);
+    dim3 blocksPerGrid_update_biases(NUM_CLASSES);
+    update_biases<<<blocksPerGrid_update_biases, threadsPerBlock_update_biases, NUM_IMAGES * sizeof(float)>>>(dt_deltas, d_model.biases, learning_rate, NUM_CLASSES, NUM_IMAGES);
+    update_biases_sequential(th_deltas, h_model.biases, NUM_CLASSES, NUM_IMAGES, learning_rate);
 
-    // print_matrix(h_logits, NUM_IMAGES, NUM_CLASSES);
+    dim3 threadsPerBlock_update_weights(UPDATE_WEIGHT_BLOCK_SIZE);
+    dim3 blocksPerGrid_update_weights(IMG_SIZE, NUM_CLASSES);
+    update_wieghts<<<blocksPerGrid_update_weights, threadsPerBlock_update_weights, 1024 * sizeof(float)>>>(dt_images, dt_deltas, d_model.weights, learning_rate, NUM_IMAGES, NUM_CLASSES, IMG_SIZE);
+    update_weights_sequential(th_images, th_deltas, h_model.weights, learning_rate, NUM_IMAGES, IMG_SIZE, NUM_CLASSES);
 
     cudaDeviceSynchronize();
-    cudaError_t err = cudaMemcpy(ph_delta, d_delta, NUM_IMAGES * NUM_CLASSES * sizeof(float), cudaMemcpyDeviceToHost);
+    // for (int i = 0; i < NUM_CLASSES; i++)
+    // {
+    //     printf("Row %d - CPU: %.6f, GPU: %.6f\n", i, h_model.biases[i], d_model.biases[i]);
+    // }
+
+    cudaError_t err = cudaMemcpy(ph_delta, dt_deltas, NUM_IMAGES * NUM_CLASSES * sizeof(float), cudaMemcpyDeviceToHost);
     if (err != cudaSuccess)
     {
         fprintf(stderr, "CUDA memcpy Device to Host failed: %s\n", cudaGetErrorString(err));
         exit(EXIT_FAILURE); // Stop execution if an error occurs
     }
-    
 
-    // print_matrix(d_delta, NUM_CLASSES, NUM_IMAGES);
-    compare_matrices(ph_delta, h_delta, NUM_IMAGES, NUM_CLASSES);
+    // print_matrix(th_deltas, NUM_CLASSES, NUM_IMAGES);
+    // print_matrix(ph_delta, NUM_CLASSES, NUM_IMAGES);
+    compare_matrices(d_model.weights, h_model.weights, 1, NUM_CLASSES);
 }
