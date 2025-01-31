@@ -35,7 +35,7 @@ unsigned char *read_idx3_file(const char *filename, int *count, int *rows, int *
 }
 
 // Function to read idx1 file (labels)
-unsigned char *read_idx1_file(const char *filename, int *count)
+unsigned char *read_idx1_file( const char *filename, int *count)
 {
     FILE *file = fopen(filename, "rb");
     if (!file)
@@ -62,7 +62,7 @@ unsigned char *read_idx1_file(const char *filename, int *count)
     return data;
 }
 
-Model init_model(int input_size, int num_classes)
+Model init_model(Model h_model,int input_size, int num_classes)
 {
     Model model;
 
@@ -70,20 +70,12 @@ Model init_model(int input_size, int num_classes)
     cudaMalloc((void **)&model.weights, input_size * num_classes * sizeof(float));
     cudaMalloc((void **)&model.biases, num_classes * sizeof(float));
 
-    // Calculate scale factor
-    float scale = sqrtf(2.0f / input_size);
-
-    // Initialize weights using a CUDA kernel
-    int total_weights = input_size * num_classes;
-    dim3 block(BLOCKSIZE);
-    dim3 grid((total_weights + BLOCKSIZE - 1) / BLOCKSIZE);
-    init_weights_kernel<<<grid, block>>>(model.weights, input_size, num_classes, scale);
+    cudaMemcpy(model.weights, h_model.weights, input_size * num_classes * sizeof(float), cudaMemcpyHostToDevice);
 
     // Use cudaMemset to set biases to zero
     cudaMemset(model.biases, 0, num_classes * sizeof(float));
 
     // Synchronize to ensure initialization is complete
-    cudaDeviceSynchronize();
 
     return model;
 }

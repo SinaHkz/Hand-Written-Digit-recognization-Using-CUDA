@@ -1,5 +1,6 @@
 #include "kernel.h"
 #include <cfloat>
+#include <stdio.h>
 
 __device__ float cross_entropy_loss(float *probs, int true_label)
 {
@@ -195,7 +196,8 @@ __global__ void matrixSubtractKernel(float *A, bool *B, float *C, int m, int n)
     if (row < m && col < n)
     {
         int index = row * n + col;
-        C[index] = A[index] - B[index];
+        C[index] = A[index] - (float)B[index];
+        printf("A: %f B: %d C: %f\n", A[index], B[index], C[index]);
     }
 }
 
@@ -212,7 +214,7 @@ __global__ void transpose(float *in, float *out, int ny, int nx)
 
 __global__ void update_biases(float *matrix, float *biases, float lr, int num_classes, int img_size, int num_img)
 {
-    extern __shared__ float shared_data[];  // Ensure IMG_SIZE matches maximum expected row size
+    extern __shared__ float shared_data[]; // Ensure IMG_SIZE matches maximum expected row size
 
     int row = blockIdx.x;
     int tid = threadIdx.x;
@@ -222,24 +224,60 @@ __global__ void update_biases(float *matrix, float *biases, float lr, int num_cl
     __syncthreads();
 
     // Unrolled parallel reduction with power-of-two assumption
-    if (IMG_SIZE >= 1024) { if (tid < 512) { shared_data[tid] += shared_data[tid + 512]; } __syncthreads(); }
-    if (IMG_SIZE >= 512) { if (tid < 256) { shared_data[tid] += shared_data[tid + 256]; } __syncthreads(); }
-    if (IMG_SIZE >= 256) { if (tid < 128) { shared_data[tid] += shared_data[tid + 128]; } __syncthreads(); }
-    if (IMG_SIZE >= 128) { if (tid < 64) { shared_data[tid] += shared_data[tid + 64]; } __syncthreads(); }
-    
+    if (IMG_SIZE >= 1024)
+    {
+        if (tid < 512)
+        {
+            shared_data[tid] += shared_data[tid + 512];
+        }
+        __syncthreads();
+    }
+    if (IMG_SIZE >= 512)
+    {
+        if (tid < 256)
+        {
+            shared_data[tid] += shared_data[tid + 256];
+        }
+        __syncthreads();
+    }
+    if (IMG_SIZE >= 256)
+    {
+        if (tid < 128)
+        {
+            shared_data[tid] += shared_data[tid + 128];
+        }
+        __syncthreads();
+    }
+    if (IMG_SIZE >= 128)
+    {
+        if (tid < 64)
+        {
+            shared_data[tid] += shared_data[tid + 64];
+        }
+        __syncthreads();
+    }
+
     // Warp-level unrolling (no synchronization needed)
-    if (tid < 32) {
+    if (tid < 32)
+    {
         volatile float *vsmem = shared_data;
-        if (IMG_SIZE >= 64) vsmem[tid] += vsmem[tid + 32];
-        if (IMG_SIZE >= 32) vsmem[tid] += vsmem[tid + 16];
-        if (IMG_SIZE >= 16) vsmem[tid] += vsmem[tid + 8];
-        if (IMG_SIZE >= 8) vsmem[tid] += vsmem[tid + 4];
-        if (IMG_SIZE >= 4) vsmem[tid] += vsmem[tid + 2];
-        if (IMG_SIZE >= 2) vsmem[tid] += vsmem[tid + 1];
+        if (IMG_SIZE >= 64)
+            vsmem[tid] += vsmem[tid + 32];
+        if (IMG_SIZE >= 32)
+            vsmem[tid] += vsmem[tid + 16];
+        if (IMG_SIZE >= 16)
+            vsmem[tid] += vsmem[tid + 8];
+        if (IMG_SIZE >= 8)
+            vsmem[tid] += vsmem[tid + 4];
+        if (IMG_SIZE >= 4)
+            vsmem[tid] += vsmem[tid + 2];
+        if (IMG_SIZE >= 2)
+            vsmem[tid] += vsmem[tid + 1];
     }
 
     // Write final biases
-    if (tid == 0) {
+    if (tid == 0)
+    {
         biases[row] -= shared_data[0] / num_img * lr;
     }
 }
@@ -256,17 +294,22 @@ __global__ void update_wieghts(float *images, float *deltas, float *weights, flo
     __syncthreads();
 
     // Optimized unrolled reduction
-    if (blockDim.x >= 1024 && tid < 512) sdata[tid] += sdata[tid + 512];
+    if (blockDim.x >= 1024 && tid < 512)
+        sdata[tid] += sdata[tid + 512];
     __syncthreads();
-    if (blockDim.x >= 512 && tid < 256) sdata[tid] += sdata[tid + 256];
+    if (blockDim.x >= 512 && tid < 256)
+        sdata[tid] += sdata[tid + 256];
     __syncthreads();
-    if (blockDim.x >= 256 && tid < 128) sdata[tid] += sdata[tid + 128];
+    if (blockDim.x >= 256 && tid < 128)
+        sdata[tid] += sdata[tid + 128];
     __syncthreads();
-    if (blockDim.x >= 128 && tid < 64) sdata[tid] += sdata[tid + 64];
+    if (blockDim.x >= 128 && tid < 64)
+        sdata[tid] += sdata[tid + 64];
     __syncthreads();
 
     // Warp-level unrolled reduction (no synchronization needed)
-    if (tid < 32) {
+    if (tid < 32)
+    {
         volatile float *vsdata = sdata;
         vsdata[tid] += vsdata[tid + 32];
         vsdata[tid] += vsdata[tid + 16];
@@ -277,7 +320,8 @@ __global__ void update_wieghts(float *images, float *deltas, float *weights, flo
     }
 
     // Final update by thread 0
-    if (tid == 0) {
+    if (tid == 0)
+    {
         weights[wRow * img_size + xRow] -= sdata[0] / num_img * lr;
     }
 }
