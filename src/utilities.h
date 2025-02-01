@@ -11,4 +11,4 @@ unsigned char *read_idx3_file(const char *filename, int *count, int *rows, int *
 unsigned char *read_idx1_file(const char *filename, int *count);
 
 
-Model init_model(Model h_model,int input_size, int num_classes);
+void init_model(Model model, int input_size, int num_classes);

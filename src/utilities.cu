@@ -64,20 +64,28 @@ unsigned char *read_idx1_file(const char *filename, int *count)
     return data;
 }
 
-Model init_model(Model h_model, int input_size, int num_classes)
+void init_weights_cpu(float *weights, int input_size, int num_classes, float scale)
 {
-    Model model;
+    srand(1234); // Set the seed for reproducibility
 
-    // Allocate memory on the GPU
-    cudaMallocManaged((void **)&model.weights, input_size * num_classes * sizeof(float));
-    cudaMallocManaged((void **)&model.biases, num_classes * sizeof(float));
+    int total_elements = input_size * num_classes;
+    for (int i = 0; i < total_elements; i++)
+    {
+        // Generate random numbers in the range [-0.5, 0.5)
+        weights[i] = scale * ((rand() / (float)RAND_MAX) - 0.5f);
+    }
+}
 
-    cudaMemcpy(model.weights, h_model.weights, input_size * num_classes * sizeof(float), cudaMemcpyHostToDevice);
+void init_model(Model model, int input_size, int num_classes)
+{
+    // Allocate unified memory (accessible by both host and device)
 
-    // Use cudaMemset to set biases to zero
-    cudaMemset(model.biases, 0, num_classes * sizeof(float));
 
-    // Synchronize to ensure initialization is complete
+    float scale = sqrtf(2.0f / input_size);
 
-    return model;
+    // Initialize weights using the CPU-based function (CPU function is still valid with unified memory)
+    init_weights_cpu(model.weights, input_size, num_classes, scale);
+
+    // Use memset to set biases to zero (this works on managed memory as well)
+    memset(model.biases, 0, num_classes * sizeof(float));
 }

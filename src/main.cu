@@ -52,17 +52,6 @@ void print_matrix(float *matrix, int num_rows, int num_cols)
     printf("\n"); // Extra newline for better readability
 }
 
-void init_weights_cpu(float *weights, int input_size, int num_classes, float scale)
-{
-    srand(1234); // Set the seed for reproducibility
-
-    int total_elements = input_size * num_classes;
-    for (int i = 0; i < total_elements; i++)
-    {
-        // Generate random numbers in the range [-0.5, 0.5)
-        weights[i] = scale * ((rand() / (float)RAND_MAX) - 0.5f);
-    }
-}
 void compare_matrices(float *matrix1, float *matrix2, int num_rows, int num_cols)
 {
     bool are_equal = true;
@@ -248,19 +237,17 @@ int main()
     // Normilize data and save them in float array
     float *images;
     cudaMalloc(&images, image_count * IMG_SIZE * sizeof(float));
-    dim3 block(32, 16);                                                                               // 16x16 threads per block
-    dim3 grid((image_count + block.x - 1) / block.x, (IMG_SIZE + block.y - 1) / block.y); // Grid size
+    dim3 block(32, 16);
+    dim3 grid((image_count + block.x - 1) / block.x, (IMG_SIZE + block.y - 1) / block.y);
     matrixNormalizeKernel<<<grid, block>>>(image_data, images, image_count, IMG_SIZE);
 
-    Model h_model;
     int input_size = rows * cols;
-    h_model.weights = (float *)malloc(input_size * NUM_CLASSES * sizeof(float));
-    h_model.biases = (float *)malloc(NUM_CLASSES * sizeof(float));
-    float scale = sqrtf(2.0f / input_size);
-    init_weights_cpu(h_model.weights, IMG_SIZE, NUM_CLASSES, scale);
-    memset(h_model.biases, 0, NUM_CLASSES * sizeof(float));
 
-    Model d_model = init_model(h_model, IMG_SIZE, NUM_CLASSES);
+    Model d_model;
+    cudaMallocManaged((void **)&d_model.weights, input_size * NUM_CLASSES * sizeof(float));
+    cudaMallocManaged((void **)&d_model.biases, NUM_CLASSES * sizeof(float));
+    
+    init_model(d_model, IMG_SIZE, NUM_CLASSES);
     bool *h_onehot_labels = (bool *)calloc(image_count * NUM_CLASSES, sizeof(bool));
 
     for (int i = 0; i < image_count; i++)
@@ -355,8 +342,8 @@ int main()
 
     // Free host memory
     free(h_onehot_labels);
-    free(h_model.weights);
-    free(h_model.biases);
+    // free(h_model.weights);
+    // free(h_model.biases);
 
     return 0;
 }
