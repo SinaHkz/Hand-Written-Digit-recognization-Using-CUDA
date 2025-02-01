@@ -120,6 +120,77 @@ __global__ void compute_z(float *weights, float *biases, float *images, float *z
     }
 }
 
+__global__ void softmax_kernel(const float *logits, float *probs, int num_elements)
+{
+    extern __shared__ float shared_data[];
+    float *max_logit_shared = shared_data;
+    float *logits_shared = max_logit_shared + blockDim.x * blockDim.y;
+    float *probs_shared = logits_shared + blockDim.x * blockDim.y;
+
+    // 2D thread index calculation
+    int tid_x = threadIdx.x;
+    int tid_y = threadIdx.y;
+    int idx = tid_y * blockDim.x + tid_x;
+    int global_idx = idx + blockIdx.x * blockDim.x * blockDim.y;
+
+    // Step 1: Load data into shared memory
+    if (global_idx < num_elements)
+    {
+        logits_shared[idx] = logits[global_idx];
+        max_logit_shared[idx] = logits_shared[idx];
+    }
+    else
+    {
+        logits_shared[idx] = 0.0f;
+        max_logit_shared[idx] = -FLT_MAX; // Use a large negative value for out-of-bounds threads
+    }
+    __syncthreads();
+    
+
+    if (tid_x < 5)
+        max_logit_shared[idx] = fmaxf(max_logit_shared[idx], max_logit_shared[idx + 5]);
+    __syncthreads();
+
+    if (tid_x < 2)
+        max_logit_shared[idx] = fmaxf(max_logit_shared[idx], max_logit_shared[idx + 2]);
+    __syncthreads();
+
+    if (tid_x == 0)
+    {
+        max_logit_shared[idx] = fmaxf(max_logit_shared[idx], max_logit_shared[idx + 4]);
+        max_logit_shared[idx] = fmaxf(max_logit_shared[idx], max_logit_shared[idx + 1]);
+    }
+    __syncthreads();
+
+    // Step 3: Compute the exponential values
+    if (global_idx < num_elements)
+    {
+        logits_shared[idx] = expf(logits_shared[idx] - max_logit_shared[tid_y * blockDim.x]);
+        probs_shared[idx] = logits_shared[idx];
+    }
+    __syncthreads();
+
+    if (tid_x < 5)
+    {
+        logits_shared[idx] += logits_shared[idx + 5];
+    }
+    __syncthreads();
+    if (tid_x < 2)
+    {
+        logits_shared[idx] += logits_shared[idx + 2];
+    }
+    __syncthreads();
+    if (tid_x == 0)
+    {
+        logits_shared[idx] += logits_shared[idx + 4];
+        logits_shared[idx] += logits_shared[idx + 1];
+    }
+    __syncthreads();
+    // Step 4: Compute probabilities
+    probs_shared[idx] /= logits_shared[tid_y * blockDim.x];
+    probs[global_idx] = probs_shared[idx];
+}
+
 __global__ void compute_softmax(const float *logits, float *probs, int num_elements)
 {
     extern __shared__ float shared_data[];

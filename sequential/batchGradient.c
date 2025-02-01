@@ -124,6 +124,28 @@ Model init_model(int input_size, int num_classes)
     return model;
 }
 
+void write_logits_to_file(const char *filename, float *logits, int num_images, int num_classes)
+{
+    FILE *file = fopen(filename, "w");
+    if (file == NULL)
+    {
+        perror("Error opening file");
+        return;
+    }
+
+    for (int img_idx = 0; img_idx < num_images; img_idx++)
+    {
+        fprintf(file, "Image %d:\n", img_idx + 1);  // Print image index
+        for (int j = 0; j < num_classes; j++)
+        {
+            fprintf(file, "Class %d: %.6f\n", j, logits[img_idx * num_classes + j]);
+        }
+        fprintf(file, "\n");
+    }
+
+    fclose(file);
+}
+
 // Training step for mini-batch gradient descent
 void train_step(Model *model, unsigned char **images, int *labels, int batch_size, int input_size, float lr)
 {
@@ -152,8 +174,11 @@ void train_step(Model *model, unsigned char **images, int *labels, int batch_siz
             for (int i = 0; i < input_size; i++)
             {
                 logits[j] += model->weights[i * NUM_CLASSES + j] * image[i];
-            } 
+            }
         }
+
+        // write_logits_to_file("text2.txt",logits,1,NUM_CLASSES);
+        // exit(1);
 
         // Compute softmax probabilities
         softmax(logits, probs, NUM_CLASSES);
@@ -233,6 +258,61 @@ int infer_digit(Model *model, unsigned char *image, int input_size)
     return predicted_label;
 }
 
+void print_model(Model h_model, int input_size, int num_classes)
+{
+    FILE *file = fopen("../matrixTests/test.txt", "w");
+    if (file == NULL)
+    {
+        printf("Error opening file for writing.\n");
+        return;
+    }
+
+    // Write the dimensions (rows and columns) at the beginning of the file
+    fprintf(file, "Rows: %d, Columns: %d\n\n", input_size, num_classes);
+
+    // Write the weights
+    fprintf(file, "Model Weights:\n");
+    for (int i = 0; i < num_classes; i++)
+    {
+        fprintf(file, "Class %d: ", i);
+        for (int j = 0; j < input_size; j++)
+        {
+            fprintf(file, "%.6f ", h_model.weights[i * input_size + j]);
+        }
+        fprintf(file, "\n");
+    }
+
+    // Write the biases
+    fprintf(file, "\nModel Biases:\n");
+    for (int i = 0; i < num_classes; i++)
+    {
+        fprintf(file, "Bias for Class %d: %.6f\n", i, h_model.biases[i]);
+    }
+
+    // Close the file
+    fclose(file);
+}
+
+void print_matrix_weights_to_file(float *matrix, int rows, int cols, const char *filename)
+{
+    FILE *file = fopen(filename, "w"); // Open file in write mode
+    if (file == NULL)
+    {
+        printf("Error opening file!\n");
+        return;
+    }
+
+    for (int i = 0; i < rows; i++)
+    {
+        for (int j = 0; j < cols; j++)
+        {
+            fprintf(file, "Weight at [%d][%d]: %.6f\n", i, j, matrix[i * cols + j]);
+        }
+    }
+
+    fclose(file); // Close the file after writing
+}
+
 int main()
 {
     const char *image_file = "/home/sinahz/Desktop/softmaxProject/dataSet/train-images.idx3-ubyte";
@@ -251,7 +331,7 @@ int main()
 
     int input_size = rows * cols;
     Model model = init_model(input_size, NUM_CLASSES);
-    float learning_rate = 0.1; // Reduced from 0.1
+    float learning_rate = 0.01; // Reduced from 0.1
 
     // Mini-batch training loop
     for (int epoch = 0; epoch < 1; epoch++)
@@ -275,14 +355,19 @@ int main()
         }
     }
 
+    print_matrix_weights_to_file(model.weights,NUM_CLASSES,28*28,"test.txt");
+
+    
+
     // Normalize the image for inference
     unsigned char *test_image = images; // Select a test image
-    int result = infer_digit(&model, (images + 14521 * input_size), rows * cols);
-    int result1 = infer_digit(&model, (images + 14525 * input_size), rows * cols);
+    int result = infer_digit(&model, (images + 0 * input_size), rows * cols);
+    int result1 = infer_digit(&model, (images + 1 * input_size), rows * cols);
     int result2 = infer_digit(&model, (images + 14526 * input_size), rows * cols);
     int result3 = infer_digit(&model, (images + 14527 * input_size), rows * cols);
 
     // printf("Inference result0: %d\nInference result1: %d\nInference result2: %d\nInference result3: %d\n", result, result1, result2, result3);
+    print_model(model, input_size, NUM_CLASSES);
 
     free_model(&model);
     free(images);

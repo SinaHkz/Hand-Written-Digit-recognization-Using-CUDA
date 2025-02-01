@@ -19,3 +19,5 @@ __global__ void update_biases(float *matrix, float *result, float lr, int num_cl
 
 __global__ void update_wieghts(float *images, float *deltas, float *weights, float lr, int num_img, int num_classes, int img_size);
 
+__global__ void softmax_kernel(const float *logits, float *probs, int num_elements);
+

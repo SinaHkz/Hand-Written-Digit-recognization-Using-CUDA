@@ -196,6 +196,41 @@ void update_weights_sequential(float *images, float *deltas, float *weights, flo
         }
     }
 }
+#define BATCH_SIZE 64 // Define your batch size
+
+int infer_digit(Model *model, unsigned char *image, int input_size)
+{
+    float logits[NUM_CLASSES] = {0};        // Array to store the logits for each class
+    float softmax_probs[NUM_CLASSES] = {0}; // Array to store the softmax probabilities
+
+    // Step 1: Compute logits
+    for (int j = 0; j < NUM_CLASSES; j++)
+    {
+        logits[j] = model->biases[j]; // Start with the bias
+        for (int i = 0; i < input_size; i++)
+        {
+            logits[j] += model->weights[j * input_size + i] * image[i]; // Weighted sum of inputs
+        }
+    }
+
+    // Step 2: Compute softmax probabilities for numerical stability
+    compute_full_softmax(logits, softmax_probs, 1, NUM_CLASSES); // We only infer for 1 image at a time
+
+    // Step 3: Find the predicted label (class with the highest probability)
+    int predicted_label = 0;
+    float max_prob = softmax_probs[0];
+    for (int j = 1; j < NUM_CLASSES; j++)
+    {
+        if (softmax_probs[j] > max_prob)
+        {
+            max_prob = softmax_probs[j];
+            predicted_label = j;
+        }
+    }
+
+    printf("Predicted Label: %d (Confidence: %.2f%%)\n", predicted_label, max_prob * 100);
+    return predicted_label;
+}
 
 int main()
 {
@@ -213,8 +248,8 @@ int main()
     }
 
     // Prepare input data
-    float *images = (float *)malloc(NUM_IMAGES * IMG_SIZE * sizeof(float));
-    for (int img_idx = 0; img_idx < NUM_IMAGES; img_idx++)
+    float *images = (float *)malloc(image_count * IMG_SIZE * sizeof(float));
+    for (int img_idx = 0; img_idx < image_count; img_idx++)
     {
         for (int i = 0; i < IMG_SIZE; i++)
         {
@@ -231,100 +266,102 @@ int main()
     memset(h_model.biases, 0, NUM_CLASSES * sizeof(float));
 
     Model d_model = init_model(h_model, IMG_SIZE, NUM_CLASSES);
-    bool *h_onehot_labels = (bool *)calloc(NUM_IMAGES * NUM_CLASSES, sizeof(bool));
-    for (int i = 0; i < NUM_IMAGES; i++)
+    bool *h_onehot_labels = (bool *)calloc(image_count * NUM_CLASSES, sizeof(bool));
+
+    for (int i = 0; i < image_count; i++)
     {
         int label = labels[i];
         h_onehot_labels[i * NUM_CLASSES + label] = true;
     }
 
-    float learning_rate = 0.1;
-
-    float *h_images, *h_logits, *th_images, *th_deltas, *h_delta;
-    h_logits = (float *)malloc(NUM_IMAGES * IMG_SIZE * sizeof(float));
-    // h_prob = (float *)malloc(NUM_IMAGES * NUM_CLASSES * sizeof(float));
-    h_delta = (float *)malloc(NUM_IMAGES * NUM_CLASSES * sizeof(float));
-
-    float *ph_logits, *ph_delta;
-    ph_delta = (float *)malloc(NUM_IMAGES * NUM_CLASSES * sizeof(float));
-    ph_logits = (float *)malloc(NUM_IMAGES * IMG_SIZE * sizeof(float));
-
-    th_images = (float *)malloc(NUM_IMAGES * IMG_SIZE * sizeof(float));
-    th_deltas = (float *)malloc(NUM_IMAGES * NUM_CLASSES * sizeof(float));
-
-    h_images = images;
-
-    memset(h_logits, 0, NUM_IMAGES * IMG_SIZE * sizeof(float));
-    // memset(th_images, 0, NUM_IMAGES * IMG_SIZE * sizeof(float));
+    float learning_rate = 0.1f;
 
     // Allocate memory on GPU
     float *d_images, *d_logits, *dt_images, *dt_deltas, *d_delta;
     bool *d_label;
-    cudaMalloc(&d_images, NUM_IMAGES * IMG_SIZE * sizeof(float));
-    cudaMalloc(&d_logits, NUM_IMAGES * NUM_CLASSES * sizeof(float));
-    cudaMalloc(&dt_images, NUM_IMAGES * IMG_SIZE * sizeof(float));
-    cudaMalloc(&dt_deltas, NUM_IMAGES * NUM_CLASSES * sizeof(float));
-    cudaMalloc(&d_label, NUM_IMAGES * NUM_CLASSES * sizeof(bool));
-    cudaMallocManaged(&d_delta, NUM_IMAGES * NUM_CLASSES * sizeof(float));
+    cudaMalloc(&d_images, BATCH_SIZE * IMG_SIZE * sizeof(float));
+    cudaMalloc(&d_logits, BATCH_SIZE * NUM_CLASSES * sizeof(float));
+    cudaMalloc(&dt_images, BATCH_SIZE * IMG_SIZE * sizeof(float));
+    cudaMalloc(&dt_deltas, BATCH_SIZE * NUM_CLASSES * sizeof(float));
+    cudaMalloc(&d_label, BATCH_SIZE * NUM_CLASSES * sizeof(bool));
+    cudaMallocManaged(&d_delta, BATCH_SIZE * NUM_CLASSES * sizeof(float));
 
-    // Copy data to GPU
-    cudaMemcpy(d_images, images, NUM_IMAGES * IMG_SIZE * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_label, h_onehot_labels, NUM_CLASSES * NUM_IMAGES * sizeof(bool), cudaMemcpyHostToDevice);
-    cudaMemset(d_logits, 0, NUM_IMAGES * NUM_CLASSES * sizeof(float));
-
-    dim3 threadsPerBlock_z(COMPUTE_Z_BLOCK_SIZE);
-    dim3 blocksPerGrid_z(NUM_CLASSES * NUM_IMAGES);
-    compute_z<<<blocksPerGrid_z, threadsPerBlock_z, SHARED_MEMORY_SIZE * sizeof(float)>>>(d_model.weights, d_model.biases, d_images, d_logits, IMG_SIZE, NUM_CLASSES, NUM_IMAGES);
-    compute_logits_cpu(h_model.weights, h_model.biases, h_images, h_logits, IMG_SIZE, NUM_CLASSES, NUM_IMAGES);
-
-    float *d_prob = d_logits;
-    float *h_prob = h_logits;
-    dim3 threadsPerBlock_softmax(NUM_CLASSES, SMAX_BLOCK_SIZE / NUM_CLASSES);
-    dim3 blocksPerGrid_softmax(NUM_IMAGES * NUM_CLASSES / SMAX_BLOCK_SIZE);
-    compute_softmax<<<blocksPerGrid_softmax, threadsPerBlock_softmax, 3 * SMAX_BLOCK_SIZE * sizeof(float)>>>(d_logits, d_prob, NUM_CLASSES * NUM_IMAGES);
-    compute_full_softmax(h_logits, h_prob, NUM_IMAGES, NUM_CLASSES);
-
-    dim3 threadsPerBlock_subtract(8, 4);
-    dim3 blocksPerGrid_subtract((NUM_CLASSES + threadsPerBlock_subtract.x - 1) / threadsPerBlock_subtract.x, (NUM_IMAGES + threadsPerBlock_subtract.y - 1) / threadsPerBlock_subtract.y);
-    matrixSubtractKernel<<<blocksPerGrid_subtract, threadsPerBlock_subtract>>>(d_prob, d_label, d_delta, NUM_IMAGES, NUM_CLASSES);
-    subtract_matrices(h_logits, h_onehot_labels, h_delta, NUM_IMAGES, NUM_CLASSES);
-
-    dim3 threadsPerBlock_transpose(16, 8);
-    dim3 blocksPerGrid_transpose(
-        (IMG_SIZE + threadsPerBlock_transpose.x - 1) / threadsPerBlock_transpose.x,
-        (NUM_IMAGES + threadsPerBlock_transpose.y - 1) / threadsPerBlock_transpose.y);
-    transpose<<<blocksPerGrid_transpose, threadsPerBlock_transpose>>>(d_images, dt_images, NUM_IMAGES, IMG_SIZE);
-    transpose_sequential(h_images, th_images, NUM_IMAGES, IMG_SIZE);
-
-    dim3 threadsPerBlock_transpose_prob(16, 8);
-    dim3 blocksPerGrid_transpose_prob((NUM_CLASSES + threadsPerBlock_transpose_prob.x - 1) / threadsPerBlock_transpose_prob.x, (NUM_IMAGES + threadsPerBlock_transpose_prob.y - 1) / threadsPerBlock_transpose_prob.y);
-    transpose<<<blocksPerGrid_transpose_prob, threadsPerBlock_transpose_prob>>>(d_delta, dt_deltas, NUM_IMAGES, NUM_CLASSES);
-    transpose_sequential(h_delta, th_deltas, NUM_IMAGES, NUM_CLASSES);
-
-    dim3 threadsPerBlock_update_biases(NUM_IMAGES);
-    dim3 blocksPerGrid_update_biases(NUM_CLASSES);
-    update_biases<<<blocksPerGrid_update_biases, threadsPerBlock_update_biases, NUM_IMAGES * sizeof(float)>>>(dt_deltas, d_model.biases, learning_rate, NUM_CLASSES, NUM_IMAGES);
-    update_biases_sequential(th_deltas, h_model.biases, NUM_CLASSES, NUM_IMAGES, learning_rate);
-
-    dim3 threadsPerBlock_update_weights(UPDATE_WEIGHT_BLOCK_SIZE);
-    dim3 blocksPerGrid_update_weights(IMG_SIZE, NUM_CLASSES);
-    update_wieghts<<<blocksPerGrid_update_weights, threadsPerBlock_update_weights, 1024 * sizeof(float)>>>(dt_images, dt_deltas, d_model.weights, learning_rate, NUM_IMAGES, NUM_CLASSES, IMG_SIZE);
-    update_weights_sequential(th_images, th_deltas, h_model.weights, learning_rate, NUM_IMAGES, IMG_SIZE, NUM_CLASSES);
-
-    cudaDeviceSynchronize();
-    // for (int i = 0; i < NUM_CLASSES; i++)
-    // {
-    //     printf("Row %d - CPU: %.6f, GPU: %.6f\n", i, h_model.biases[i], d_model.biases[i]);
-    // }
-
-    cudaError_t err = cudaMemcpy(ph_delta, dt_deltas, NUM_IMAGES * NUM_CLASSES * sizeof(float), cudaMemcpyDeviceToHost);
-    if (err != cudaSuccess)
+    // Train in batches
+    for (int epoch = 0; epoch < 10; epoch++)
     {
-        fprintf(stderr, "CUDA memcpy Device to Host failed: %s\n", cudaGetErrorString(err));
-        exit(EXIT_FAILURE); // Stop execution if an error occurs
-    }
+        for (int batch_start = 0; batch_start < image_count; batch_start += BATCH_SIZE)
+        {
+            int batch_end = min(batch_start + BATCH_SIZE, image_count);
+            int batch_size = batch_end - batch_start;
 
-    // print_matrix(th_deltas, NUM_CLASSES, NUM_IMAGES);
-    // print_matrix(ph_delta, NUM_CLASSES, NUM_IMAGES);
-    compare_matrices(d_model.weights, h_model.weights, 1, NUM_CLASSES);
+            // Copy current batch to GPU
+            cudaMemcpy(d_images, &images[batch_start * IMG_SIZE], batch_size * IMG_SIZE * sizeof(float), cudaMemcpyHostToDevice);
+            cudaMemcpy(d_label, &h_onehot_labels[batch_start * NUM_CLASSES], batch_size * NUM_CLASSES * sizeof(bool), cudaMemcpyHostToDevice);
+            cudaMemset(d_logits, 0, batch_size * NUM_CLASSES * sizeof(float));
+
+            // Compute z
+            dim3 threadsPerBlock_z(COMPUTE_Z_BLOCK_SIZE);
+            dim3 blocksPerGrid_z(NUM_CLASSES * batch_size);
+            compute_z<<<blocksPerGrid_z, threadsPerBlock_z, SHARED_MEMORY_SIZE * sizeof(float)>>>(d_model.weights, d_model.biases, d_images, d_logits, IMG_SIZE, NUM_CLASSES, batch_size);
+
+            float *d_prob = d_logits;
+            dim3 threadsPerBlock_softmax(NUM_CLASSES, SMAX_BLOCK_SIZE / NUM_CLASSES);
+            dim3 blocksPerGrid_softmax(batch_size * NUM_CLASSES / SMAX_BLOCK_SIZE);
+            compute_softmax<<<blocksPerGrid_softmax, threadsPerBlock_softmax, 3 * SMAX_BLOCK_SIZE * sizeof(float)>>>(d_logits, d_prob, NUM_CLASSES * batch_size);
+
+            dim3 threadsPerBlock_subtract(8, 4);
+            dim3 blocksPerGrid_subtract((NUM_CLASSES + threadsPerBlock_subtract.x - 1) / threadsPerBlock_subtract.x, (batch_size + threadsPerBlock_subtract.y - 1) / threadsPerBlock_subtract.y);
+            matrixSubtractKernel<<<blocksPerGrid_subtract, threadsPerBlock_subtract>>>(d_prob, d_label, d_delta, batch_size, NUM_CLASSES);
+
+            // Transpose images and deltas for backpropagation
+            dim3 threadsPerBlock_transpose(16, 8);
+            dim3 blocksPerGrid_transpose(
+                (IMG_SIZE + threadsPerBlock_transpose.x - 1) / threadsPerBlock_transpose.x,
+                (batch_size + threadsPerBlock_transpose.y - 1) / threadsPerBlock_transpose.y);
+            transpose<<<blocksPerGrid_transpose, threadsPerBlock_transpose>>>(d_images, dt_images, batch_size, IMG_SIZE);
+
+            dim3 threadsPerBlock_transpose_prob(16, 8);
+            dim3 blocksPerGrid_transpose_prob((NUM_CLASSES + threadsPerBlock_transpose_prob.x - 1) / threadsPerBlock_transpose_prob.x, (batch_size + threadsPerBlock_transpose_prob.y - 1) / threadsPerBlock_transpose_prob.y);
+            transpose<<<blocksPerGrid_transpose_prob, threadsPerBlock_transpose_prob>>>(d_delta, dt_deltas, batch_size, NUM_CLASSES);
+
+            // Update biases
+            dim3 threadsPerBlock_update_biases(batch_size);
+            dim3 blocksPerGrid_update_biases(NUM_CLASSES);
+            update_biases<<<blocksPerGrid_update_biases, threadsPerBlock_update_biases, batch_size * sizeof(float)>>>(dt_deltas, d_model.biases, learning_rate, NUM_CLASSES, batch_size);
+
+            // Update weights
+            dim3 threadsPerBlock_update_weights(UPDATE_WEIGHT_BLOCK_SIZE);
+            dim3 blocksPerGrid_update_weights(IMG_SIZE, NUM_CLASSES);
+            update_wieghts<<<blocksPerGrid_update_weights, threadsPerBlock_update_weights, 1024 * sizeof(float)>>>(dt_images, dt_deltas, d_model.weights, learning_rate, batch_size, NUM_CLASSES, IMG_SIZE);
+        }
+    }
+    cudaDeviceSynchronize();
+
+    int result = infer_digit(&d_model, (image_data + 0 * input_size), rows * cols);
+    infer_digit(&d_model, (image_data + 1 * input_size), rows * cols);
+    infer_digit(&d_model, (image_data + 2 * input_size), rows * cols);
+    infer_digit(&d_model, (image_data + 3 * input_size), rows * cols);
+    infer_digit(&d_model, (image_data + 4 * input_size), rows * cols);
+    infer_digit(&d_model, (image_data + 5 * input_size), rows * cols);
+    infer_digit(&d_model, (image_data + 6 * input_size), rows * cols);
+    infer_digit(&d_model, (image_data + 7 * input_size), rows * cols);
+
+    print_model(d_model, IMG_SIZE, NUM_CLASSES);
+    // compare_matrices(d_model.weights, h_model.weights, 1, NUM_CLASSES);
+
+    // Free GPU memory
+    cudaFree(d_images);
+    cudaFree(d_logits);
+    cudaFree(dt_images);
+    cudaFree(dt_deltas);
+    cudaFree(d_label);
+    cudaFree(d_delta);
+
+    // Free host memory
+    free(images);
+    free(h_onehot_labels);
+    free(h_model.weights);
+    free(h_model.biases);
+
+    return 0;
 }
