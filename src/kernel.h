@@ -21,3 +21,4 @@ __global__ void update_wieghts(float *images, float *deltas, float *weights, flo
 
 __global__ void softmax_kernel(const float *logits, float *probs, int num_elements);
 
+__global__ void matrixNormalizeKernel(unsigned char *A, float *B,int m, int n);

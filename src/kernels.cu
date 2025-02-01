@@ -77,7 +77,6 @@ __global__ void compute_z(float *weights, float *biases, float *images, float *z
     int img_index = blockIdx.x / num_classes;
     int weight_index = blockIdx.x % num_classes;
     int tid = threadIdx.x;
-    float sum;
 
     if (tid < img_size && img_index < num_img && weight_index < num_classes)
     {
@@ -360,3 +359,17 @@ __global__ void update_wieghts(float *images, float *deltas, float *weights, flo
         weights[wRow * img_size + xRow] -= sdata[0] / num_img * lr;
     }
 }
+
+
+__global__ void matrixNormalizeKernel(unsigned char *A, float *B, int m, int n)
+{
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < m && col < n)
+    {
+        int index = row * n + col;
+        B[index] = A[index] / 255.0f;
+    }
+}
+

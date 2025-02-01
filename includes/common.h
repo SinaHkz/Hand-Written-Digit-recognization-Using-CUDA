@@ -11,6 +11,8 @@
 #define NUM_IMAGES 128
 #define SUM_ROW_SIZE 128
 #define UPDATE_WEIGHT_BLOCK_SIZE 1024
+#define BATCH_SIZE 64 // Define your batch size
+
 
 #define SMAX_ROWS_PER_BLOCK 16 //Number of rows in a block
 

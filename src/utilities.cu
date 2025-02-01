@@ -28,14 +28,15 @@ unsigned char *read_idx3_file(const char *filename, int *count, int *rows, int *
     *cols = __builtin_bswap32(*cols);
 
     int image_size = (*rows) * (*cols);
-    unsigned char *data = (unsigned char *)malloc((*count) * image_size);
+    unsigned char *data;
+    cudaMallocManaged(&data, (*count) * image_size);
     fread(data, sizeof(unsigned char), (*count) * image_size, file);
     fclose(file);
     return data;
 }
 
 // Function to read idx1 file (labels)
-unsigned char *read_idx1_file( const char *filename, int *count)
+unsigned char *read_idx1_file(const char *filename, int *count)
 {
     FILE *file = fopen(filename, "rb");
     if (!file)
@@ -56,13 +57,14 @@ unsigned char *read_idx1_file( const char *filename, int *count)
     fread(count, sizeof(int), 1, file);
     *count = __builtin_bswap32(*count);
 
-    unsigned char *data = (unsigned char *)malloc(*count);
+    unsigned char *data;
+    cudaMallocManaged(&data, *count);
     fread(data, sizeof(unsigned char), *count, file);
     fclose(file);
     return data;
 }
 
-Model init_model(Model h_model,int input_size, int num_classes)
+Model init_model(Model h_model, int input_size, int num_classes)
 {
     Model model;
 

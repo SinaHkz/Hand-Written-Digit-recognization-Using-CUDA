@@ -152,7 +152,6 @@ void subtract_matrices(float *A, bool *B, float *result, int rows, int cols)
         }
     }
 }
-
 void transpose_sequential(float *in, float *out, int ny, int nx)
 {
     for (int i = 0; i < ny; i++)
@@ -196,7 +195,6 @@ void update_weights_sequential(float *images, float *deltas, float *weights, flo
         }
     }
 }
-#define BATCH_SIZE 64 // Define your batch size
 
 int infer_digit(Model *model, unsigned char *image, int input_size)
 {
@@ -247,15 +245,12 @@ int main()
         return EXIT_FAILURE;
     }
 
-    // Prepare input data
-    float *images = (float *)malloc(image_count * IMG_SIZE * sizeof(float));
-    for (int img_idx = 0; img_idx < image_count; img_idx++)
-    {
-        for (int i = 0; i < IMG_SIZE; i++)
-        {
-            images[img_idx * IMG_SIZE + i] = image_data[img_idx * IMG_SIZE + i] / 255.0f; // Normalize to [0, 1]
-        }
-    }
+    // Normilize data and save them in float array
+    float *images;
+    cudaMalloc(&images, image_count * IMG_SIZE * sizeof(float));
+    dim3 block(32, 16);                                                                               // 16x16 threads per block
+    dim3 grid((image_count + block.x - 1) / block.x, (IMG_SIZE + block.y - 1) / block.y); // Grid size
+    matrixNormalizeKernel<<<grid, block>>>(image_data, images, image_count, IMG_SIZE);
 
     Model h_model;
     int input_size = rows * cols;
@@ -346,7 +341,7 @@ int main()
     infer_digit(&d_model, (image_data + 6 * input_size), rows * cols);
     infer_digit(&d_model, (image_data + 7 * input_size), rows * cols);
 
-    print_model(d_model, IMG_SIZE, NUM_CLASSES);
+    // print_model(d_model, IMG_SIZE, NUM_CLASSES);
     // compare_matrices(d_model.weights, h_model.weights, 1, NUM_CLASSES);
 
     // Free GPU memory
@@ -356,9 +351,9 @@ int main()
     cudaFree(dt_deltas);
     cudaFree(d_label);
     cudaFree(d_delta);
+    cudaFree(images);
 
     // Free host memory
-    free(images);
     free(h_onehot_labels);
     free(h_model.weights);
     free(h_model.biases);
