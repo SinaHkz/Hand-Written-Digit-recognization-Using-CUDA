@@ -246,7 +246,7 @@ int main()
     Model d_model;
     cudaMallocManaged((void **)&d_model.weights, input_size * NUM_CLASSES * sizeof(float));
     cudaMallocManaged((void **)&d_model.biases, NUM_CLASSES * sizeof(float));
-    
+
     init_model(d_model, IMG_SIZE, NUM_CLASSES);
     bool *h_onehot_labels = (bool *)calloc(image_count * NUM_CLASSES, sizeof(bool));
 
@@ -318,6 +318,21 @@ int main()
         }
     }
     cudaDeviceSynchronize();
+
+    const char *image_file_test = "./dataSet/t10k-images.idx3-ubyte";
+    const char *label_file_test = "./dataSet/t10k-labels.idx1-ubyte";
+
+    image_data = read_idx3_file(image_file_test, &image_count, &rows, &cols);
+
+    labels = read_idx1_file(label_file_test, &label_count);
+    if (image_count != label_count)
+    {
+        fprintf(stderr, "Image and label counts do not match!\n");
+        return EXIT_FAILURE;
+    }
+
+    // Normilize data and save them in float array
+    matrixNormalizeKernel<<<grid, block>>>(image_data, images, image_count, IMG_SIZE);
 
     int result = infer_digit(&d_model, (image_data + 0 * input_size), rows * cols);
     infer_digit(&d_model, (image_data + 1 * input_size), rows * cols);
