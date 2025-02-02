@@ -215,7 +215,7 @@ int infer_digit(Model *model, unsigned char *image, int input_size)
         }
     }
 
-    printf("Predicted Label: %d (Confidence: %.2f%%)\n", predicted_label, max_prob * 100);
+    // printf("Predicted Label: %d (Confidence: %.2f%%)\n", predicted_label, max_prob * 100);
     return predicted_label;
 }
 
@@ -269,7 +269,7 @@ int main()
     cudaMallocManaged(&d_delta, BATCH_SIZE * NUM_CLASSES * sizeof(float));
 
     // Train in batches
-    for (int epoch = 0; epoch < 10; epoch++)
+    for (int epoch = 0; epoch < 30; epoch++)
     {
         for (int batch_start = 0; batch_start < image_count; batch_start += BATCH_SIZE)
         {
@@ -334,14 +334,24 @@ int main()
     // Normilize data and save them in float array
     matrixNormalizeKernel<<<grid, block>>>(image_data, images, image_count, IMG_SIZE);
 
-    int result = infer_digit(&d_model, (image_data + 0 * input_size), rows * cols);
-    infer_digit(&d_model, (image_data + 1 * input_size), rows * cols);
-    infer_digit(&d_model, (image_data + 2 * input_size), rows * cols);
-    infer_digit(&d_model, (image_data + 3 * input_size), rows * cols);
-    infer_digit(&d_model, (image_data + 4 * input_size), rows * cols);
-    infer_digit(&d_model, (image_data + 5 * input_size), rows * cols);
-    infer_digit(&d_model, (image_data + 6 * input_size), rows * cols);
-    infer_digit(&d_model, (image_data + 7 * input_size), rows * cols);
+    int result;
+    int count = 0;
+    for (int i = 0; i < image_count; i++)
+    {
+        result = infer_digit(&d_model, (image_data + i * input_size), rows * cols);
+        if (result == labels[i])
+            count++;
+    }
+    printf("%d\n",count);
+
+    // infer_digit(&d_model, (image_data + 0 * input_size), rows * cols);
+    // infer_digit(&d_model, (image_data + 1 * input_size), rows * cols);
+    // infer_digit(&d_model, (image_data + 2 * input_size), rows * cols);
+    // infer_digit(&d_model, (image_data + 3 * input_size), rows * cols);
+    // infer_digit(&d_model, (image_data + 4 * input_size), rows * cols);
+    // infer_digit(&d_model, (image_data + 5 * input_size), rows * cols);
+    // infer_digit(&d_model, (image_data + 6 * input_size), rows * cols);
+    // infer_digit(&d_model, (image_data + 7 * input_size), rows * cols);
 
     // print_model(d_model, IMG_SIZE, NUM_CLASSES);
     // compare_matrices(d_model.weights, h_model.weights, 1, NUM_CLASSES);
