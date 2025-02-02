@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define NUM_CLASSES 10
-#define MINI_BATCH_SIZE 64 // Define the mini-batch size
+#define MINI_BATCH_SIZE 128 // Define the mini-batch size
 
 typedef struct
 {
@@ -135,7 +135,7 @@ void write_logits_to_file(const char *filename, float *logits, int num_images, i
 
     for (int img_idx = 0; img_idx < num_images; img_idx++)
     {
-        fprintf(file, "Image %d:\n", img_idx + 1);  // Print image index
+        fprintf(file, "Image %d:\n", img_idx + 1); // Print image index
         for (int j = 0; j < num_classes; j++)
         {
             fprintf(file, "Class %d: %.6f\n", j, logits[img_idx * num_classes + j]);
@@ -334,7 +334,7 @@ int main()
     float learning_rate = 0.01; // Reduced from 0.1
 
     // Mini-batch training loop
-    for (int epoch = 0; epoch < 1; epoch++)
+    for (int epoch = 0; epoch < 30; epoch++)
     {
         printf("Epoch %d\n", epoch + 1);
         for (int i = 0; i < image_count; i += MINI_BATCH_SIZE)
@@ -355,13 +355,36 @@ int main()
         }
     }
 
-    print_matrix_weights_to_file(model.weights,NUM_CLASSES,28*28,"test.txt");
+    print_matrix_weights_to_file(model.weights, NUM_CLASSES, 28 * 28, "test.txt");
 
-    
+    const char *image_file_test = "../dataSet/t10k-images.idx3-ubyte";
+    const char *label_file_test = "../dataSet/t10k-labels.idx1-ubyte";
+
+    image_file = read_idx3_file(image_file_test, &image_count, &rows, &cols);
+
+    labels = read_idx1_file(label_file_test, &label_count);
+    if (image_count != label_count)
+    {
+        fprintf(stderr, "Image and label counts do not match!\n");
+        return EXIT_FAILURE;
+    }
+
+    // Normilize data and save them in float array
+  
+
+    int result;
+    int count = 0;
+    for (int i = 0; i < image_count; i++)
+    {
+        result = infer_digit(&model, (image_file + i * input_size), rows * cols);
+        if (result == labels[i])
+            count++;
+    }
+    printf("%d\n", count);
 
     // Normalize the image for inference
     unsigned char *test_image = images; // Select a test image
-    int result = infer_digit(&model, (images + 0 * input_size), rows * cols);
+     result = infer_digit(&model, (images + 0 * input_size), rows * cols);
     int result1 = infer_digit(&model, (images + 1 * input_size), rows * cols);
     int result2 = infer_digit(&model, (images + 14526 * input_size), rows * cols);
     int result3 = infer_digit(&model, (images + 14527 * input_size), rows * cols);

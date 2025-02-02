@@ -5,13 +5,11 @@
 
 // #define NUM_CLASSES 10
 #define IMG_SIZE 784 // MNIST image size: 28x28
-#define COMPUTE_Z_BLOCK_SIZE 800
+#define COMPUTE_Z_BLOCK_SIZE 1024
 #define SMAX_BLOCK_SIZE 20
 #define SHARED_MEMORY_SIZE 1024
-#define NUM_IMAGES 128
-#define SUM_ROW_SIZE 128
 #define UPDATE_WEIGHT_BLOCK_SIZE 1024
-#define BATCH_SIZE 64 // Define your batch size
+#define BATCH_SIZE 128 // Define your batch size
 
 
 #define SMAX_ROWS_PER_BLOCK 16 //Number of rows in a block

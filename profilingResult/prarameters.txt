@@ -1,0 +1,40 @@
+#define COMPUTE_Z_BLOCK_SIZE 1024
+#define SMAX_BLOCK_SIZE 20
+8558 / 10000
+#define COMPUTE_Z_BLOCK_SIZE 800
+#define SMAX_BLOCK_SIZE 20
+8200 / 10000
+
+
+#define COMPUTE_Z_BLOCK_SIZE 1024
+#define SMAX_BLOCK_SIZE 40
+8403 / 10000
+
+
+
+            Type  Time(%)      Time     Calls       Avg       Min       Max  Name
+ GPU activities:   83.85%  3.26618s      4690  696.41us  635.23us  1.2239ms  update_wieghts(float*, float*, float*, float, int, int, int)
+                   13.57%  528.51ms      4690  112.69us  82.848us  408.03us  compute_z(float*, float*, float*, float*, int, int, int)
+                    0.98%  38.249ms      4690  8.1550us  5.8880us  10.208us  [CUDA memcpy DtoD]
+                    0.89%  34.607ms      9380  3.6890us     895ns  11.584us  transpose(float*, float*, int, int)
+                    0.16%  6.3686ms      4690  1.3570us  1.2480us  2.4320us  compute_softmax(float const *, float*, int)
+                    0.15%  6.0238ms      4690  1.2840us     384ns  2.1450us  [CUDA memset]
+                    0.14%  5.4824ms      4690  1.1680us  1.0880us  2.1120us  update_biases(float*, float*, float, int, int)
+                    0.12%  4.8408ms      4690  1.0320us     959ns  1.8560us  matrixSubtractKernel(float*, bool*, float*, int, int)
+                    0.09%  3.3687ms         2  1.6843ms  1.4073ms  1.9614ms  matrixNormalizeKernel(unsigned char*, float*, int, int)
+                    0.04%  1.4482ms      4690     308ns     256ns     576ns  [CUDA memcpy HtoD]
+      API calls:   92.10%  3.83320s      9380  408.66us  3.9980us  1.5584ms  cudaMemcpy
+                    4.47%  186.15ms         7  26.593ms  3.8810us  185.98ms  cudaMallocManaged
+                    2.61%  108.67ms     32832  3.3090us  2.2530us  3.3374ms  cudaLaunchKernel
+                    0.66%  27.594ms      4690  5.8830us  2.5760us  60.363us  cudaMemset
+                    0.10%  4.2013ms       114  36.853us     112ns  2.1671ms  cuDeviceGetAttribute
+                    0.03%  1.0510ms         7  150.15us  1.6810us  810.81us  cudaFree
+                    0.02%  738.44us         1  738.44us  738.44us  738.44us  cudaDeviceSynchronize
+                    0.01%  241.31us         6  40.218us  1.4130us  164.78us  cudaMalloc
+                    0.00%  11.659us         1  11.659us  11.659us  11.659us  cuDeviceGetName
+                    0.00%  5.5400us         1  5.5400us  5.5400us  5.5400us  cuDeviceGetPCIBusId
+                    0.00%  1.6430us         3     547ns     176ns  1.2470us  cuDeviceGetCount
+                    0.00%     605ns         2     302ns     120ns     485ns  cuDeviceGet
+                    0.00%     388ns         1     388ns     388ns     388ns  cuDeviceTotalMem
+                    0.00%     232ns         1     232ns     232ns     232ns  cuModuleGetLoadingMode
+                    0.00%     203ns         1     203ns     203ns     203ns  cuDeviceGetUuid
