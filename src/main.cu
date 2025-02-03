@@ -37,7 +37,7 @@ int main()
         h_onehot_labels[i * NUM_CLASSES + label] = true;
     }
 
-    float learning_rate = 0.1f;
+    float learning_rate = 0.5f;
     int batchSize = BATCH_SIZE;
 
     // Allocate memory on GPU
@@ -56,7 +56,7 @@ int main()
     cudaMemcpy(d_images, images, image_count * IMG_SIZE * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_label, h_onehot_labels, image_count * NUM_CLASSES * sizeof(bool), cudaMemcpyHostToDevice);
 
-    for (int epoch = 0; epoch < 100; epoch++)
+    for (int epoch = 0; epoch < 10; epoch++)
     {
         for (int batch_start = 0; batch_start < image_count; batch_start += batchSize)
         {

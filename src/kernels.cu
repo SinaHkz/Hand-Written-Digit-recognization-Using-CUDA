@@ -284,70 +284,37 @@ __global__ void transpose(float *in, float *out, int ny, int nx)
 
 __global__ void update_biases(float *matrix, float *result, float lr, int num_classes, int num_img)
 {
-    extern __shared__ float shared_data[]; // Ensure NUM_IMG matches maximum expected row size
-
+    extern __shared__ float shared_data[];
     int row = blockIdx.x;
     int tid = threadIdx.x;
 
-    // Initialize shared memory with matrix row data
-    shared_data[tid] = (tid < num_img) ? matrix[row * num_img + tid] : 0.0f;
+    // Grid-stride loop for coalesced memory access and handling arbitrary num_img
+    float sum = 0.0f;
+    for(int i = tid; i < num_img; i += blockDim.x) {
+        sum += matrix[row * num_img + i];
+    }
+    shared_data[tid] = sum;
     __syncthreads();
 
-    // Unrolled parallel reduction with power-of-two assumption
-    if (num_img >= 1024)
-    {
-        if (tid < 512)
-        {
-            shared_data[tid] += shared_data[tid + 512];
-        }
-        __syncthreads();
-    }
-    if (num_img >= 512)
-    {
-        if (tid < 256)
-        {
-            shared_data[tid] += shared_data[tid + 256];
-        }
-        __syncthreads();
-    }
-    if (num_img >= 256)
-    {
-        if (tid < 128)
-        {
-            shared_data[tid] += shared_data[tid + 128];
-        }
-        __syncthreads();
-    }
-    if (num_img >= 128)
-    {
-        if (tid < 64)
-        {
-            shared_data[tid] += shared_data[tid + 64];
+    // Sequential reduction with power-of-two assumption
+    for(int s = blockDim.x/2; s > 0; s >>= 1) {
+        if(tid < s) {
+            shared_data[tid] += shared_data[tid + s];
         }
         __syncthreads();
     }
 
-    // Warp-level unrolling (no synchronization needed)
-    if (tid < 32)
-    {
-        volatile float *vsmem = shared_data;
-        if (num_img >= 64)
-            vsmem[tid] += vsmem[tid + 32];
-        if (num_img >= 32)
-            vsmem[tid] += vsmem[tid + 16];
-        if (num_img >= 16)
-            vsmem[tid] += vsmem[tid + 8];
-        if (num_img >= 8)
-            vsmem[tid] += vsmem[tid + 4];
-        if (num_img >= 4)
-            vsmem[tid] += vsmem[tid + 2];
-        if (num_img >= 2)
-            vsmem[tid] += vsmem[tid + 1];
+    // Warp-level reduction using shuffle instructions (more efficient)
+    if(tid < 32) {
+        float val = shared_data[tid];
+        for(int offset = 16; offset > 0; offset >>= 1)
+            val += __shfl_down_sync(0xffffffff, val, offset);
+        shared_data[tid] = val;
     }
+    __syncthreads();
 
     // Write final result
-    if (tid == 0)
-    {
+    if(tid == 0) {
         result[row] = shared_data[0] / num_img * lr;
     }
 }

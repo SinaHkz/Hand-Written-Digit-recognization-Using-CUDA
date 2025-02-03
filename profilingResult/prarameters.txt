@@ -38,3 +38,72 @@
                     0.00%     388ns         1     388ns     388ns     388ns  cuDeviceTotalMem
                     0.00%     232ns         1     232ns     232ns     232ns  cuModuleGetLoadingMode
                     0.00%     203ns         1     203ns     203ns     203ns  cuDeviceGetUuid
+
+
+
+
+
+16: 86.48
+real    0m39.109s
+user    0m19.794s
+sys     0m19.263s
+
+32: 85.76
+real    0m20.031s
+user    0m10.109s
+sys     0m9.875s
+
+64: 84.09
+10.623s 
+5.292s
+5.277s
+
+128: 81.85
+real    0m5.983s
+user    0m2.982s
+sys     0m2.960s
+
+
+
+0.01: 75.12
+0.05: 81.79
+0.1: 84.09
+0.2: 85.70
+0.5: 86.72
+1: 86.44
+
+
+
+1 epoch: 71.83
+
+real    0m1.739s
+user    0m0.881s
+sys     0m0.809s
+
+5
+85.62
+
+real    0m5.646s
+user    0m2.784s
+sys     0m2.825s
+
+10
+86.72
+
+real    0m10.735s
+user    0m5.365s
+sys     0m5.311s
+
+30
+86.33
+
+real    0m30.674s
+user    0m15.490s
+sys     0m15.141s
+
+100
+86.11
+
+real    1m41.352s
+user    0m51.348s
+sys     0m49.964s
