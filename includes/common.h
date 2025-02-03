@@ -9,7 +9,7 @@
 #define SMAX_BLOCK_SIZE 20
 #define SHARED_MEMORY_SIZE 1024
 #define UPDATE_WEIGHT_BLOCK_SIZE 1024
-#define BATCH_SIZE 128 // Define your batch size
+#define BATCH_SIZE 64 // Define your batch size
 
 
 #define SMAX_ROWS_PER_BLOCK 16 //Number of rows in a block

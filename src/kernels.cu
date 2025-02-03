@@ -144,7 +144,6 @@ __global__ void softmax_kernel(const float *logits, float *probs, int num_elemen
         max_logit_shared[idx] = -FLT_MAX; // Use a large negative value for out-of-bounds threads
     }
     __syncthreads();
-    
 
     if (tid_x < 5)
         max_logit_shared[idx] = fmaxf(max_logit_shared[idx], max_logit_shared[idx + 5]);
@@ -283,8 +282,9 @@ __global__ void transpose(float *in, float *out, int ny, int nx)
     }
 }
 
-__global__ void update_biases(float *matrix, float *result, float lr, int num_classes, int num_img) {
-    extern __shared__ float shared_data[];  // Ensure NUM_IMG matches maximum expected row size
+__global__ void update_biases(float *matrix, float *result, float lr, int num_classes, int num_img)
+{
+    extern __shared__ float shared_data[]; // Ensure NUM_IMG matches maximum expected row size
 
     int row = blockIdx.x;
     int tid = threadIdx.x;
@@ -294,24 +294,60 @@ __global__ void update_biases(float *matrix, float *result, float lr, int num_cl
     __syncthreads();
 
     // Unrolled parallel reduction with power-of-two assumption
-    if (num_img >= 1024) { if (tid < 512) { shared_data[tid] += shared_data[tid + 512]; } __syncthreads(); }
-    if (num_img >= 512) { if (tid < 256) { shared_data[tid] += shared_data[tid + 256]; } __syncthreads(); }
-    if (num_img >= 256) { if (tid < 128) { shared_data[tid] += shared_data[tid + 128]; } __syncthreads(); }
-    if (num_img >= 128) { if (tid < 64) { shared_data[tid] += shared_data[tid + 64]; } __syncthreads(); }
+    if (num_img >= 1024)
+    {
+        if (tid < 512)
+        {
+            shared_data[tid] += shared_data[tid + 512];
+        }
+        __syncthreads();
+    }
+    if (num_img >= 512)
+    {
+        if (tid < 256)
+        {
+            shared_data[tid] += shared_data[tid + 256];
+        }
+        __syncthreads();
+    }
+    if (num_img >= 256)
+    {
+        if (tid < 128)
+        {
+            shared_data[tid] += shared_data[tid + 128];
+        }
+        __syncthreads();
+    }
+    if (num_img >= 128)
+    {
+        if (tid < 64)
+        {
+            shared_data[tid] += shared_data[tid + 64];
+        }
+        __syncthreads();
+    }
 
     // Warp-level unrolling (no synchronization needed)
-    if (tid < 32) {
+    if (tid < 32)
+    {
         volatile float *vsmem = shared_data;
-        if (num_img >= 64) vsmem[tid] += vsmem[tid + 32];
-        if (num_img >= 32) vsmem[tid] += vsmem[tid + 16];
-        if (num_img >= 16) vsmem[tid] += vsmem[tid + 8];
-        if (num_img >= 8) vsmem[tid] += vsmem[tid + 4];
-        if (num_img >= 4) vsmem[tid] += vsmem[tid + 2];
-        if (num_img >= 2) vsmem[tid] += vsmem[tid + 1];
+        if (num_img >= 64)
+            vsmem[tid] += vsmem[tid + 32];
+        if (num_img >= 32)
+            vsmem[tid] += vsmem[tid + 16];
+        if (num_img >= 16)
+            vsmem[tid] += vsmem[tid + 8];
+        if (num_img >= 8)
+            vsmem[tid] += vsmem[tid + 4];
+        if (num_img >= 4)
+            vsmem[tid] += vsmem[tid + 2];
+        if (num_img >= 2)
+            vsmem[tid] += vsmem[tid + 1];
     }
 
     // Write final result
-    if (tid == 0) {
+    if (tid == 0)
+    {
         result[row] = shared_data[0] / num_img * lr;
     }
 }
@@ -328,29 +364,14 @@ __global__ void update_wieghts(float *images, float *deltas, float *weights, flo
     __syncthreads();
 
     // Optimized unrolled reduction
-    if (blockDim.x >= 1024 && tid < 512)
-        sdata[tid] += sdata[tid + 512];
-    __syncthreads();
-    if (blockDim.x >= 512 && tid < 256)
-        sdata[tid] += sdata[tid + 256];
-    __syncthreads();
-    if (blockDim.x >= 256 && tid < 128)
-        sdata[tid] += sdata[tid + 128];
-    __syncthreads();
-    if (blockDim.x >= 128 && tid < 64)
-        sdata[tid] += sdata[tid + 64];
-    __syncthreads();
-
-    // Warp-level unrolled reduction (no synchronization needed)
-    if (tid < 32)
+    // Sequential addressing reduction
+    for (int s = blockDim.x / 2; s > 0; s >>= 1)
     {
-        volatile float *vsdata = sdata;
-        vsdata[tid] += vsdata[tid + 32];
-        vsdata[tid] += vsdata[tid + 16];
-        vsdata[tid] += vsdata[tid + 8];
-        vsdata[tid] += vsdata[tid + 4];
-        vsdata[tid] += vsdata[tid + 2];
-        vsdata[tid] += vsdata[tid + 1];
+        if (tid < s)
+        {
+            sdata[tid] += sdata[tid + s];
+        }
+        __syncthreads();
     }
 
     // Final update by thread 0
@@ -359,7 +380,6 @@ __global__ void update_wieghts(float *images, float *deltas, float *weights, flo
         weights[wRow * img_size + xRow] -= sdata[0] / num_img * lr;
     }
 }
-
 
 __global__ void matrixNormalizeKernel(unsigned char *A, float *B, int m, int n)
 {
@@ -372,8 +392,6 @@ __global__ void matrixNormalizeKernel(unsigned char *A, float *B, int m, int n)
         B[index] = A[index] / 255.0f;
     }
 }
-
-
 
 __global__ void infer_softmax(const float *logits, int num_elements, int *predicted_class)
 {
@@ -465,10 +483,7 @@ __global__ void infer_softmax(const float *logits, int num_elements, int *predic
         // Store the class index with the maximum probability
         if (class_idx != -1)
         {
-            predicted_class[blockIdx.x] = class_idx;  // store predicted class index
+            predicted_class[blockIdx.x] = class_idx; // store predicted class index
         }
     }
 }
-
-
-
